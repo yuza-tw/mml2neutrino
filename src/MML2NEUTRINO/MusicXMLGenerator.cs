@@ -11,20 +11,22 @@ namespace MML2NEUTRINO
     public class MusicXMLGenerator
     {
         // 16分音符と8分音符3連符をサポート → 全音符 = 48
-        string[] t = new string[] { "-",
-            "16th","16th","16th","eighth", "[5]","eighth","[7]","quater","eighth","[10]",
-            "[11]","quater","[13]","[14]","[15]","half","[17]","quater","[19]","[20]",
-            "[21]","[22]","[23]","half", "[25]","[26]","[27]","[28]","[29]","[30]",
-            "[31]","[32]","[33]","[34]", "[35]","half","[37]","[38]","[39]","[40]",
-            "[41]","[42]","[43]","[44]", "[45]","[46]","[47]","whole" };
         int[] durations = new int[] { 0,
             48,24,16,12, 0,8,0,6, 0,0,0,4, 0,0,0,3,
             0,0,0,0, 0,0,0,2, 0,0,0,0, 0,0,0,0,
-            0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1 }; // L1=48.L2=24,L3=16,L4=12,L6=8,L8=6,L12=4,L16=3.L24=2,L48=1 
+            0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1 }; // L1=48,L2=24,L3=16,L4=12,L6=8,L8=6,L12=4,L16=3.L24=2,L48=1 
+
+        enum TieType {
+            NotTied = 0,
+            TieStart,
+            TieEnd
+        };
+
         int mDuration = 0;
         const int maxDuration = 48;
         XElement xml = null;
         XElement part = null;
+        int bar = 1;
 
         public MusicXMLGenerator()
         {
@@ -48,60 +50,30 @@ namespace MML2NEUTRINO
         {
             Initialize();
 
-            int m = 1;
+            bar = 1;
             XElement measure = new XElement("measure");
             measure.Add(Attribute(maxDuration/4, 0, 4, 4, "G", 2));
-            measure.SetAttributeValue("number", m++);
+            measure.SetAttributeValue("number", bar++);
 
-            for(int i=0; i< elements.Length; i++)
+            foreach (var elem in elements)
             {
-                var e = elements[i];
-                Type t = e.GetType();
-                if(t == typeof(Note))
+                switch(elem)
                 {
-                    var n = CreateNote((Note)e);
-                    measure.Add(n);
-                    if (mDuration == maxDuration)
-                    {
-                        part.Add(measure);
-                        measure = new XElement("measure");
-                        measure.SetAttributeValue("number", m++);
-                        mDuration = 0;
-                    }else if (mDuration > maxDuration)
-                    {
-                        string mml = CreateMML(elements, i);
-                        throw new FormatException($"{mml} 小節をまたぐ音符が指定されています。(over: {mDuration - maxDuration}/{maxDuration})");
-                    }
-                }
-                else if(t == typeof(Rest))
-                {
-                    var r = CreateRest((Rest)e);
-                    measure.Add(r);
-                    if (mDuration == maxDuration)
-                    {
-                        part.Add(measure);
-                        measure = new XElement("measure");
-                        measure.SetAttributeValue("number", m++);
-                        mDuration = 0;
-                    }
-                    else if (mDuration > maxDuration)
-                    {
-                        string mml = CreateMML(elements, i);
-                        throw new FormatException($"{mml} 小節をまたぐ休符が指定されています。(over: {mDuration - maxDuration}/{maxDuration})");
-                    }
-                }
-                else if(t == typeof(Tempo))
-                {
-                    measure.Add(CreateTempo(((Tempo)e).Value));
+                    case Note note:
+                        measure = CreateNote(measure, note);
+                        break;
+                    case Rest rest:
+                        measure = CreateRest(measure, rest);
+                        break;
+                    case Tempo tempo:
+                        measure = CreateTempo(measure, tempo);
+                        break;
                 }
             }
+
             if (mDuration > 0)
             {
-                int last = maxDuration - mDuration;
-                for (int i = 0; i < last; i++)
-                {
-                    measure.Add(CreateRest(new Rest { Length = 48, HasDot = false }));
-                }
+                measure = CreateRest(measure, new Rest { Length = maxDuration - mDuration, HasDot = false });
                 part.Add(measure);
             }
             return xml;
@@ -118,17 +90,18 @@ namespace MML2NEUTRINO
             return mml;
         }
 
-        public XElement CreateTempo(int tempo)
+        public XElement CreateTempo(XElement measure, Tempo tempo)
         {
             XElement sound = new XElement("sound");
-            sound.SetAttributeValue("tempo", tempo);
-            XElement t = new XElement("direction",
+            sound.SetAttributeValue("tempo", tempo.Value);
+            measure.Add(new XElement("direction",
                 new XElement("direction-type",
                     new XElement("metronome",
                         new XElement("beat-unit", "quater"),
-                        new XElement("per-minute", tempo))),
-                sound);
-            return t;
+                        new XElement("per-minute", tempo.Value))),
+                sound)
+            );
+            return measure;
         }
         private XElement Attribute(int divisions, int fifths, int beats, int beatType, string sign, int line)
         {
@@ -146,54 +119,134 @@ namespace MML2NEUTRINO
             return attribute;
         }
 
-        private XElement CreateNote(Note n)
+        private XElement CreateNote(XElement measure, Note n)
         {
-            XElement lyricElement = new XElement("lyric",
-                new XElement("sylabic", "single"),
-                new XElement("text", n.Lyric));
-            lyricElement.SetAttributeValue("number", 1);
-
-            XElement note = null;
             if(n.Length<0 || n.Length>= durations.Length || durations[n.Length] == 0)
             {
                 throw new FormatException($"長さ {n.Length} は指定できません。");
             }
+
             int duration = durations[n.Length];
             if (n.HasDot)
             {
                 duration = duration * 3 / 2;
             }
+
+            bool tied = false;
+
+            while (mDuration + duration > maxDuration)
+            {
+                if (mDuration < maxDuration)
+                {
+                    // tied note
+                    int rest = maxDuration - mDuration;
+                    measure.Add(NoteElem(n, rest, TieType.TieStart));
+                    duration -= rest;
+                    tied = true;
+                }
+                part.Add(measure);
+                measure = new XElement("measure");
+                measure.SetAttributeValue("number", bar++);
+                mDuration = 0;
+            }
+
+            measure.Add(NoteElem(n, duration, tied ? TieType.TieEnd : TieType.NotTied));
             mDuration += duration;
 
-            var dot = n.HasDot ? new XElement("dot") : null;
-            var alter = n.Alter == -1 ? new XElement("alter", -1) : n.Alter == 1 ? new XElement("alter", 1) : null;
-            note = new XElement("note",
+            return measure;
+        }
+
+        private XElement NoteElem(Note n, int duration, TieType tieType)
+        {
+            var note = new XElement("note",
                 new XElement("pitch",
                     new XElement("step", n.Step),
-                    alter,
+                    new XElement("alter", n.Alter),
                     new XElement("octave", n.Octave)
-                    ),
-                new XElement("duration", duration),
-                new XElement("type", t[duration]),
-                dot,
-                lyricElement);
+                ),
+                new XElement("duration", duration)
+            );
+
+            string lyric = n.Lyric;
+
+            if (tieType != TieType.NotTied)
+            {
+                string[] kTieTypeString = { "", "start", "stop" };
+
+                XElement tieElement = new XElement("tie");
+                tieElement.SetAttributeValue("type", kTieTypeString[(int)tieType]);
+                note.Add(tieElement);
+
+                XElement tiedElement = new XElement("tied");
+                tiedElement.SetAttributeValue("type", kTieTypeString[(int)tieType]);
+
+                XElement notationElement = new XElement("notations", tiedElement);
+                note.Add(notationElement);
+            }
+
+            if (lyric.Last() == ',')
+            {
+                lyric = lyric.TrimEnd(',');
+                if (tieType != TieType.TieStart)
+                {
+                    AddBreath(note);
+                }
+            }
+
+            if (tieType != TieType.TieEnd)
+            {
+                XElement lyricElement = new XElement("lyric", new XElement("text", lyric));
+                note.Add(lyricElement);
+            }
+
             return note;
         }
-        private XElement CreateRest(Rest r)
+        
+        private void AddBreath(XElement note)
+        {
+            note.Add(
+                new XElement("notations",
+                new XElement("articulations",
+                new XElement("breath-mark"))));
+        }
+
+
+        private XElement RestElem(int duration)
+        {
+            return new XElement("note",
+                new XElement("rest"),
+                new XElement("duration", duration)
+            );
+        }
+
+        private XElement CreateRest(XElement measure, Rest r)
         {
             int duration = durations[r.Length];
             if (r.HasDot)
             {
                 duration = duration * 3 / 2;
             }
+
+            int spill = mDuration + duration - maxDuration;
+            if (spill > 0)
+            {
+                bool newBar = (mDuration == maxDuration);
+                if (!newBar)
+                {
+                    int rest = maxDuration - mDuration;
+                    measure.Add(RestElem(rest));
+                    duration -= rest;
+                }
+                part.Add(measure);
+                measure = new XElement("measure");
+                measure.SetAttributeValue("number", bar++);
+                mDuration = 0;
+            }
+
+            measure.Add(RestElem(duration));
             mDuration += duration;
 
-            XElement note = new XElement("note",
-                new XElement("rest"),
-                new XElement("duration", duration),
-                new XElement("type", t[duration])
-            );
-            return note;
+            return measure;
         }
     }
 }
