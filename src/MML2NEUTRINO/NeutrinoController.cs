@@ -36,6 +36,10 @@ namespace MML2NEUTRINO
         /// <summary>
         /// Model directory
         /// </summary>
+        public float StyleShift { get; set; }
+        /// <summary>
+        /// Model directory
+        /// </summary>
         public string Model { get; set; }
         /// <summary>
         /// Input MML file (UTF-8)
@@ -137,15 +141,16 @@ namespace MML2NEUTRINO
                 byte[] bs = sha1.ComputeHash(fs);
                 sha1.Clear();
                 string h = BitConverter.ToString(bs).ToLower().Replace("-", "");
-                return $"{h}_{Model}_{PitchShift:0.0000}_{FormantShift}";
+                return $"{h}_{Model}_{PitchShift:0.0000}_{FormantShift}_{StyleShift}";
             }
         }
 
         public string RunNeutrino(string musicXmlFile)
         {
-            return RunNeutrino(musicXmlFile, OutputFileName, PitchShift, FormantShift, Model, NumberOfThreads);
+            return RunNeutrino(musicXmlFile, OutputFileName, StyleShift, PitchShift, FormantShift, Model, NumberOfThreads);
         }
-        public string RunNeutrino(string musicXmlFile, string outputFileName, float pitchShift, float formantShift, string modelDirectory, int numberOfThreads)
+
+        public string RunNeutrino(string musicXmlFile, string outputFileName, float styleShift, float pitchShift, float formantShift, string modelDirectory, int numberOfThreads)
         {
             outputFileName = Path.GetFullPath(outputFileName);
             string hash = GetHash(musicXmlFile);
@@ -156,7 +161,7 @@ namespace MML2NEUTRINO
                 Run(@"bin\musicXMLtoLabel.exe",
                     $"{musicXmlFile} score\\label\\full\\{baseName}.lab score\\label\\mono\\{baseName}.lab");
                 Run(@"bin\NEUTRINO.exe",
-                    $"score\\label\\full\\{baseName}.lab score\\label\\timing\\{baseName}.lab output\\{baseName}.f0 output\\{baseName}.mgc output\\{baseName}.bap model\\{modelDirectory}\\ -n {numberOfThreads} -t");
+                    $"score\\label\\full\\{baseName}.lab score\\label\\timing\\{baseName}.lab output\\{baseName}.f0 output\\{baseName}.mgc output\\{baseName}.bap model\\{modelDirectory}\\ -k {styleShift} -n {numberOfThreads} -t");
                 Run(@"bin\WORLD.exe",
                     $"output\\{baseName}.f0 output\\{baseName}.mgc output\\{baseName}.bap -f {pitchShift:0.0000} -m {formantShift} -o {outputFileName} -n {numberOfThreads} -t");
 
