@@ -19,6 +19,9 @@ namespace MML2NEUTRINO
         [Option('k', "keyshift", Required = false, HelpText = "MML のキーを変更します。1 で半音高くなります。省略時は 0 です。")]
         public int KeyShift { get; set; } = 0;
 
+        [Option('y', "styleshift", Required = false, HelpText = "スタイルシフト値を変更します。省略時は 0.0 です。")]
+        public float StyleShift { get; set; } = 0;
+
         [Option('p', "pitchshift", Required = false, HelpText = "音声出力時のピッチを変更します。+1.0 で半音高くなります。省略時は 0.0 です。")]
         public float PitchShift { get; set; } = 0f;
         [Option('f', "formantshift", Required = false, HelpText = "フォルマントを変更します。大きくする(1.05など)と声が子供っぽくなります。省略時は 1.0 です。")]

@@ -23,6 +23,7 @@ namespace MML2NEUTRINO
                 .WithParsed(opt =>
                 {
 
+                    nc.StyleShift = opt.StyleShift;
                     nc.FormantShift = opt.FormantShift;
                     nc.PitchShift = (float)Math.Pow(2,opt.PitchShift/12f);
                     nc.Model = opt.Model;
