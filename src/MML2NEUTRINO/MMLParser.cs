@@ -39,6 +39,7 @@ namespace MML2NEUTRINO
         {
             reverse = octaveReverse;
             InitializeParameter();
+            mml = Regex.Replace(mml, @";[^\n]*", "").ToUpper();
             mml = Regex.Replace(mml, @"[\t\r\n\s]", "").ToUpper();
             int p = 0;
             while(p < mml.Length)
